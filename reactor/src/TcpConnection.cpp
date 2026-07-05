@@ -1,10 +1,17 @@
 #include "TcpConnection.h"
 #include "EventLoop.h"
+#include "Log.h"
 #include <sys/socket.h>
+#include <unistd.h>
 
-TcpConnection::TcpConnection(int fd,EventLoop* loop) : fd_(fd),loop_(loop),channel_(fd,loop){}
+TcpConnection::TcpConnection(int fd,EventLoop* loop) : fd_(fd),loop_(loop),channel_(fd,loop){
+    LOG_DEBUG << "TcpConnection created, fd=" << fd_;
+}
 
-TcpConnection::~TcpConnection(){}
+TcpConnection::~TcpConnection(){
+    LOG_DEBUG << "TcpConnection destroyed, fd=" << fd_;
+    ::close(fd_);
+}
 
 void TcpConnection::send(const std::string& data)//发送数据（先缓冲，再写）
 {
@@ -95,6 +102,7 @@ void TcpConnection::handleWrite()     //EPOLLOUT回调
 
 void TcpConnection::handleClose()     //关闭/出错时调用
 {
+    LOG_DEBUG << "Connection closing, fd=" << fd_;
     if(closeCallback_) closeCallback_(this);
     destroy();
 }

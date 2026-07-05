@@ -1,6 +1,6 @@
 #include "TcpServer.h"
+#include "Log.h"
 #include <fcntl.h>
-#include <iostream>
 
 TcpServer::TcpServer(EventLoop* loop,uint16_t port,size_t numSubThreads)
     :loop_(loop),
@@ -41,7 +41,7 @@ void TcpServer::start()
         ioLoop->queueInLoop([conn](){
             conn->connectEstablished();
         });
-        std::cout<<"Accepted a new connection"<<std::endl;
+        LOG_DEBUG << "Accepted new connection, fd=" << client_fd;
     });
     acceptor_.listen();
 }

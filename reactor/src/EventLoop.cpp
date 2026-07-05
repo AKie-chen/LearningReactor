@@ -1,9 +1,9 @@
 #include "EventLoop.h"
 #include "Channel.h"
+#include "Log.h"
 #include <fcntl.h>
 #include <cstring>
 #include <unistd.h>
-#include <iostream>
 #include <netinet/in.h>
 #include <sys/eventfd.h>
 
@@ -36,9 +36,9 @@ void EventLoop::loop() {
                 channel->handleEvent(events_[i].events); // 处理事件，根据事件类型调用相应的回调函数
             }
         }else if(react==0){
-            std::cout<<"Timeout occurred, no data received"<<std::endl;
+            LOG_DEBUG << "epoll_wait timeout, no events";
         }else{
-            std::cerr<<"Error occurred in epoll"<<std::endl;
+            LOG_ERROR << "epoll_wait error: " << strerror(errno);
         }
         
         std::vector<std::function<void()>> temp; // 供销毁的vector
@@ -81,7 +81,7 @@ void EventLoop::handleWakeup() {
     uint64_t one;
     ssize_t n = read(wakeupFd_, &one, sizeof(one));
     if (n != sizeof(one)) {
-        std::cerr << "EventLoop::handleWakeup() reads " << n << " bytes instead of 8" << std::endl;
+        LOG_ERROR << "handleWakeup() reads " << n << " bytes instead of 8";
     }
 }
 

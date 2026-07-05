@@ -1,8 +1,4 @@
-#include <iostream>
-#include <netinet/in.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <cstring>
+#include "Log.h"
 #include "EventLoop.h"
 #include "Channel.h"
 #include "Buffer.h"
@@ -13,6 +9,7 @@
 #include "HttpResponse.h"
 #include "TimerQueue.h"
 #include "ThreadPool.h"
+#include <signal.h>
 
 int main() {
     EventLoop loop;
@@ -75,6 +72,7 @@ int main() {
         });
     });
     server.start();
+    LOG_INFO << "Reactor HTTP server listening on port 8080, 4 IO threads, 4 worker threads";
     loop.loop(); // 启动事件循环，等待和处理事件
     return 0;
 }
