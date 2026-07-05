@@ -45,3 +45,8 @@ void TcpServer::start()
     });
     acceptor_.listen();
 }
+
+void TcpServer::shutdown() // 关闭服务器，释放资源
+{
+    subLoops_.clear(); // 清空子线程池，触发 EventLoopThread 的析构函数，停止子线程
+}

@@ -10,11 +10,22 @@
 #include "TimerQueue.h"
 #include "ThreadPool.h"
 #include <signal.h>
+#include "SignalHandler.h"
 
 int main() {
     EventLoop loop;
     TcpServer server(&loop, 8080, 4); // 创建TcpServer对象，监听8080端口，使用4个子线程处理连接
     ThreadPool threadPool(4); // 创建线程池，4个工作线程
+
+    SignalHandler signalHandler(&loop);
+    signalHandler.addSignal(SIGINT); // 注册 SIGINT 和 SIGTERM 信号处理
+    signalHandler.addSignal(SIGTERM);
+    signalHandler.setShutdownCallback([&loop, &server]() {
+        LOG_INFO << "Shutdown signal received, stopping server...";
+        server.shutdown(); // 关闭服务器，释放资源
+        loop.quit(); // 停止事件循环
+    });
+
     auto resetTimer = [&](TcpConnection* conn){
             if(conn->timerId() != 0){
                 conn->getLoop()->timerQueue().cancel(conn->timerId());
@@ -71,9 +82,9 @@ int main() {
             });
         });
     });
+    
     server.start();
     LOG_INFO << "Reactor HTTP server listening on port 8080, 4 IO threads, 4 worker threads";
     loop.loop(); // 启动事件循环，等待和处理事件
     return 0;
 }
-

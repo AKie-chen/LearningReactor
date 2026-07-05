@@ -15,6 +15,7 @@ public:
     void setMessageCallback(const MessageCallback cb);//处理连接的回调函数
     void setConnectionCallback(const ConnectionCallback cb);//连接建立创建定时器的回调函数
     void start();//启动acceptor
+    void shutdown(); // 关闭服务器，释放资源
 private:
     EventLoop* loop_;//事件循环
     Acceptor acceptor_;//服务端类

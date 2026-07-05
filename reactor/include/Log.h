@@ -28,10 +28,10 @@ public:
     }
 
 private:
-    LogLevel level_;
-    const char* file_;
-    int line_;
-    std::ostringstream buf_;
+    LogLevel level_; // 日志级别
+    const char* file_; // 文件名
+    int line_; // 行号
+    std::ostringstream buf_; // 日志内容缓冲区
     bool moved_ = false;  // 防止移动后析构时重复输出
 };
 
@@ -52,9 +52,9 @@ public:
                       const std::string& message);
 
 private:
-    static LogLevel minLevel_;
-    static OutputCallback output_;
-    static const char* levelName(LogLevel level);
+    static LogLevel minLevel_; // 全局最低日志级别
+    static OutputCallback output_; // 日志输出回调函数
+    static const char* levelName(LogLevel level); // 获取日志级别名称
 };
 
 // 便捷宏 — 使用 __FILE__ 和 __LINE__ 自动捕获位置信息
