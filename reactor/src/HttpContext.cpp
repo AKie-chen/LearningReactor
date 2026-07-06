@@ -2,7 +2,9 @@
 #include<algorithm>
 #include<cstring>
 
-HttpContext::HttpContext():state_(kExpectRequestLine), contentLength_(0){}
+HttpContext::HttpContext():state_(kExpectRequestLine)
+                          , contentLength_(0)
+                          , error_(kNoError){}
 
 int HttpContext::findCrlf(Buffer* buf, const char* cl ,std::string& line)//查找请求行/请求头
 {
@@ -62,13 +64,35 @@ bool HttpContext::parseRequestLine(std::string& line, HttpRequest* req)
 {
     size_t sp1 = line.find(' ', 0);//第一个空格位置
     size_t sp2 = line.find(' ', sp1 + 1);//第二个空格位置
+    if(sp1 == std::string::npos || sp2 == std::string::npos) {
+        error_ = kBadRequest;
+        return false;
+    }
 
     std::string method = line.substr(0, sp1);//设置方法
-    if(method == "GET") req->setMethod(HttpRequest::kGet);
-    else if(method == "POST") req->setMethod(HttpRequest::kPost);
+    if (method == "GET") req->setMethod(HttpRequest::kGet);
+    else if (method == "POST") req->setMethod(HttpRequest::kPost);
+    else if (method == "HEAD") req->setMethod(HttpRequest::kHead);
+    else {
+        error_ = kMethodNotSupported;
+        return false;
+    }
 
-    req->setPath(line.substr(sp1 + 1, sp2 - sp1 -1));
-    req->setVersion(line.substr(sp2 + 1));
+    std::string path = line.substr(sp1 + 1, sp2 - sp1 - 1);//设置路径
+    if(!path.empty()) {
+        req->setPath(path);
+    }else{
+        error_ = kBadRequest;
+        return false;
+    }
+
+    std::string version = line.substr(sp2 + 1);//设置版本
+    if(version == "HTTP/1.1" || version == "HTTP/1.0") {
+        req->setVersion(version);
+    } else {
+        error_ = kVersionNotSupported;
+        return false;
+    }
     
     return true;
 }

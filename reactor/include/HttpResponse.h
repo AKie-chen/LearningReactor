@@ -6,7 +6,11 @@
 class HttpResponse{
 public:
     enum HttpStatusCode{ k200Ok = 200, k400BadRequest = 400,
-                        k404NotFound = 404, K500InternalServerError = 500};// http状态码枚举
+                        k404NotFound = 404, k405MethodNotAllowed = 405,
+                        k500InternalServerError = 500,k505HttpVersionNotSupported = 505, };// http状态码枚举
+
+    HttpResponse();// 构造函数
+    ~HttpResponse();// 析构函数
 
     void setStatusCode(HttpStatusCode code);// 设置状态码
     void setStatusMessage(const std::string& msg);// 设置状态消息
@@ -18,6 +22,7 @@ public:
     const HttpStatusCode& code() const;//获取状态码
     const std::string& msg() const;//获取状态信息
     const std::string& header_value(const std::string& key) const;//获取header对应value 
+    static HttpResponse makeError(HttpStatusCode code, const std::string& message);// 创建错误响应对象
 
     void appendToBuffer(Buffer* buf) const;// 序列化成 HTTP 响应报文
     std::string toString() const;// 将响应对象转换为字符串形式
