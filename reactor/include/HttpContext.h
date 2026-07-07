@@ -2,6 +2,7 @@
 #include "Buffer.h"
 #include "HttpRequest.h"
 
+// 解析http请求
 class HttpContext{
 public:
     enum ParseState { kExpectRequestLine, kExpectHeaders, kExpectBody, KGotCompleteRequest }; // 解析状态

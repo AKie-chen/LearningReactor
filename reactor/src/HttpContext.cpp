@@ -100,8 +100,10 @@ bool HttpContext::parseRequestLine(std::string& line, HttpRequest* req)
 bool HttpContext::parseHeader(std::string& line, HttpRequest* req)
 {
     size_t colon = line.find(':');//一行头为Host: localhost,找":"
-    if(colon == std::string::npos) return false;
-
+    if(colon == std::string::npos) {
+        error_ = kBadRequest;
+        return false;
+    }
     std::string key = line.substr(0,colon);
     size_t valBegin = colon + 1;
 
