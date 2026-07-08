@@ -1,5 +1,13 @@
 #include "HttpResponse.h"
 
+HttpResponse::HttpResponse() : statusCode_(HttpStatusCode::k200Ok)
+                             , statusMessage_("OK")
+                             , body_()
+                             , headers_()
+                             , closeConnection_(false) {}// 构造函数{}// 构造函数
+
+HttpResponse::~HttpResponse(){}// 析构函数
+
 void HttpResponse::setStatusCode(HttpStatusCode code)// 设置状态码
 {
     statusCode_ = code;
@@ -91,4 +99,19 @@ std::string HttpResponse::toString() const// 将响应对象转换为字符串�
     result += body_;
 
     return result;
+}
+
+HttpResponse HttpResponse::makeError(HttpResponse::HttpStatusCode code, const std::string& message)// 创建错误响应对象
+{
+    std::string body = "<html><body><h1>" + std::to_string(code) + " " + message + "</h1></body></html>";
+
+    HttpResponse response;
+    response.statusCode_ = code;
+    response.statusMessage_ = message;
+    response.body_ = body;
+    response.headers_["Content-Length"] = std::to_string(body.size());
+    response.headers_["Content-Type"] = "text/html";
+    response.closeConnection_ = true; // 错误响应通常会关闭连接
+
+    return response;
 }

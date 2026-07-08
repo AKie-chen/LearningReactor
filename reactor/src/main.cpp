@@ -56,23 +56,49 @@ int main() {
     server.setMessageCallback([&resetTimer,&threadPool](TcpConnection* conn,Buffer* buf){
         HttpContext& ctx = conn->context();
         HttpRequest req;
-        if(!ctx.parseRequest(buf, &req)) return;//数据不够等下个包
+
+        if(!ctx.parseRequest(buf, &req)) {
+            if(ctx.error() == HttpContext::kNoError) return; // 数据不够，继续等待
+            else if(ctx.error() == HttpContext::kBadRequest) { // 请求格式错误，直接返回400错误
+                conn->getLoop()->queueInLoop([conn]() { 
+                    conn->send(HttpResponse::makeError(HttpResponse::k400BadRequest, "Bad Request").toString());
+                });
+                conn->forceClose(); // 关闭连接
+                return;
+            }else if(ctx.error() == HttpContext::kMethodNotSupported) { // 方法不支持，返回405错误
+                conn->getLoop()->queueInLoop([conn]() {
+                    conn->send(HttpResponse::makeError(HttpResponse::k405MethodNotAllowed, "Method Not Supported").toString());
+                });
+                ctx.reset();
+                return; 
+            }else if(ctx.error() == HttpContext::kVersionNotSupported) { // HTTP版本不支持，返回505错误
+                conn->getLoop()->queueInLoop([conn]() {
+                    conn->send(HttpResponse::makeError(HttpResponse::k505HttpVersionNotSupported, "Http Version Not Supported").toString());
+                });
+                ctx.reset();
+                return; 
+            }
+        }
 
         // 处理完复位，等待下一个请求
         ctx.reset();
         //重置定时器
         resetTimer(conn);
 
-        threadPool.run([conn]() { // 在工作线程中处理请求
-            // 构造响应
+        threadPool.run([conn,req]() { // 在工作线程中处理请求
             HttpResponse resp;
-            resp.setStatusCode(HttpResponse::k200Ok);
-            resp.setStatusMessage("OK");
-            resp.setBody("Hello, World!\n");
-
-            // 设置必要头部
-            resp.addHeader("Content-Length", std::to_string(resp.body().size()));
-            resp.addHeader("Connection", "Keep-Alive");
+            
+            if (req.method() == HttpRequest::kGet && req.path() == "/") { // 解析成功
+                resp.setStatusCode(HttpResponse::k200Ok);
+                resp.setStatusMessage("OK");
+                resp.setBody("Hello, World!");
+                resp.addHeader("Content-Length", std::to_string(resp.body().size()));
+                resp.addHeader("Content-Type", "text/plain");
+            } else if (req.method() != HttpRequest::kGet) {
+                resp = HttpResponse::makeError(HttpResponse::k405MethodNotAllowed, "Method Not Allowed");
+            } else {
+                resp = HttpResponse::makeError(HttpResponse::k404NotFound, "Not Found");
+            }
 
             // 序列化发送
             std::string data = resp.toString();

@@ -3,6 +3,7 @@
 #include <string>
 #include <map>
 
+// http请求类，用于获取http请求信息
 class HttpRequest{
 public:
     enum Method { kInvalid, kGet, kPost, kHead };//设置http方法，空，get，post，获取头
