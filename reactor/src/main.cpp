@@ -11,6 +11,8 @@
 #include "ThreadPool.h"
 #include <signal.h>
 #include "SignalHandler.h"
+#include "Router.h"
+#include "StaticFileHandler.h"
 
 int main() {
     EventLoop loop;
@@ -24,6 +26,17 @@ int main() {
         LOG_INFO << "Shutdown signal received, stopping server...";
         server.shutdown(); // 关闭服务器，释放资源
         loop.quit(); // 停止事件循环
+    });
+
+    Router router; // 创建路由器对象
+    StaticFileHandler staticHandler("./static"); // 创建静态文件处理器对象，指定静态文件目录
+
+    router.addRoute(HttpRequest::kGet, "/", [](const HttpRequest& req, HttpResponse* resp) { // 注册路由
+        resp->setStatusCode(HttpResponse::k200Ok);
+        resp->setStatusMessage("OK");
+        resp->setBody("Hello, World!");
+        resp->addHeader("Content-Length", std::to_string(resp->body().size()));
+        resp->addHeader("Content-Type", "text/plain");
     });
 
     auto resetTimer = [&](TcpConnection* conn){
@@ -44,7 +57,8 @@ int main() {
     
             conn->setTimerId(timerId);
         };
-    server.setConnectionCallback([&resetTimer](TcpConnection* conn){
+    
+        server.setConnectionCallback([&resetTimer](TcpConnection* conn){
         resetTimer(conn);
         conn->setCloseCallback([](TcpConnection* conn){
             if (conn->timerId() != 0) {// 取消定时器
@@ -53,7 +67,7 @@ int main() {
             }
         });
     });
-    server.setMessageCallback([&resetTimer,&threadPool](TcpConnection* conn,Buffer* buf){
+    server.setMessageCallback([&resetTimer,&threadPool,&router,&staticHandler](TcpConnection* conn,Buffer* buf){
         HttpContext& ctx = conn->context();
         HttpRequest req;
 
@@ -85,24 +99,18 @@ int main() {
         //重置定时器
         resetTimer(conn);
 
-        threadPool.run([conn,req]() { // 在工作线程中处理请求
+        threadPool.run([conn,req, &router, &staticHandler]() { // 在工作线程中处理请求
             HttpResponse resp;
             
-            if (req.method() == HttpRequest::kGet && req.path() == "/") { // 解析成功
-                resp.setStatusCode(HttpResponse::k200Ok);
-                resp.setStatusMessage("OK");
-                resp.setBody("Hello, World!");
-                resp.addHeader("Content-Length", std::to_string(resp.body().size()));
-                resp.addHeader("Content-Type", "text/plain");
-            } else if (req.method() != HttpRequest::kGet) {
-                resp = HttpResponse::makeError(HttpResponse::k405MethodNotAllowed, "Method Not Allowed");
-            } else {
-                resp = HttpResponse::makeError(HttpResponse::k404NotFound, "Not Found");
+            if (!router.route(req, &resp)) {
+                // 没有精确匹配，尝试静态文件
+                if (!staticHandler.handle(req, &resp)) {
+                    // 静态文件也处理不了 → 404
+                    resp = HttpResponse::makeError(HttpResponse::k404NotFound, "Not Found");
+                }
             }
 
-            // 序列化发送
             std::string data = resp.toString();
-            // I/O 切回主线程
             conn->getLoop()->queueInLoop([conn, data = std::move(data)]() {
                 conn->send(data);
             });
