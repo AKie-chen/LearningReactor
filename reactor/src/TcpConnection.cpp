@@ -3,6 +3,8 @@
 #include "Log.h"
 #include <sys/socket.h>
 #include <unistd.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 
 TcpConnection::TcpConnection(int fd,EventLoop* loop) : fd_(fd),loop_(loop),channel_(fd,loop){
     LOG_DEBUG << "TcpConnection created, fd=" << fd_;
@@ -40,7 +42,10 @@ void TcpConnection::forceClose()//主动关闭
 }
 
 void TcpConnection::connectEstablished()//启动连接
-{
+{   
+    int optval = 1;
+    setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval)); // 关闭Nagle算法
+    setsockopt(fd_, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)); // 心跳机制
     channel_.setReadCallback([this](){handleRead();});
     channel_.setWriteCallback([this](){handleWrite();});
     channel_.enableReading();
@@ -103,6 +108,7 @@ void TcpConnection::handleWrite()     //EPOLLOUT回调
 void TcpConnection::handleClose()     //关闭/出错时调用
 {
     LOG_DEBUG << "Connection closing, fd=" << fd_;
+    if (onDestroy_) onDestroy_();
     if(closeCallback_) closeCallback_(this);
     destroy();
 }

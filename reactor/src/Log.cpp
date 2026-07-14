@@ -45,7 +45,19 @@ LogStream& LogStream::operator=(LogStream&& other) noexcept {
 // ──── Logger ───────────────────────────────────────────────
 
 void Logger::setLevel(LogLevel level) { minLevel_ = level; }
+
 LogLevel Logger::level() { return minLevel_; }
+
+int Logger::parseLogLevel(const std::string& level)
+{
+    if (level == "TRACE" || level == "trace") return 0;
+    if (level == "DEBUG" || level == "debug") return 0;
+    if (level == "INFO"  || level == "info")  return 1;
+    if (level == "WARN"  || level == "warn")  return 2;
+    if (level == "ERROR" || level == "error") return 3;
+    if (level == "FATAL" || level == "fatal") return 4;
+    return 1; // default INFO
+}
 
 void Logger::setOutput(OutputCallback cb) { output_ = std::move(cb); }
 

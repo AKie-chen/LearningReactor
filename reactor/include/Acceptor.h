@@ -15,7 +15,7 @@ public:
 
     void setNewConnectionCallback(const NewConnectionCallback cb);//设置新连接回调函数
     int fd();//返回fd
-    void listen();//开启监听
+    void listen(int listenNum);//设置监听队列大小,开启监听
 
 private:
     void handleRead();  //处理监听

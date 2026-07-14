@@ -1,6 +1,7 @@
 #include "Acceptor.h"
 #include "Log.h"
 #include <fcntl.h>
+#include <string.h>
 
 Acceptor::Acceptor(EventLoop* loop, uint16_t port)
             :loop_(loop),
@@ -33,9 +34,9 @@ int Acceptor::fd()//返回fd
     return listenfd_;
 }
 
-void Acceptor::listen()//开启监听
+void Acceptor::listen(int listenNum)//开启监听
 {
-    ::listen(listenfd_,5); //监听socket，允许最多5个连接
+    ::listen(listenfd_,listenNum); //监听socket，允许最多5个连接
     handleRead();
 }
 
@@ -48,6 +49,10 @@ void Acceptor::handleRead()  //处理监听
 
         while((client_fd = accept(channel_.fd(), (sockaddr*)&client_addr, &client_len)) != -1){//循环接受连接，直到没有连接请求为止
             newConnectionCallback_(client_fd,client_addr);//
+        }
+
+        if(errno != EAGAIN && errno != EWOULDBLOCK) {
+            LOG_ERROR << "accept error" << strerror(errno);
         }
     });
     channel_.enableReading(); // 使能可读事件

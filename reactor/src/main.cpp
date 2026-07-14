@@ -16,18 +16,6 @@
 #include "Config.h"
 #include <string>
 
-// Simple parser for log level strings used by ServerConfig::logLevel.
-static int parseLogLevel(const std::string& level)
-{
-    if (level == "TRACE" || level == "trace") return 0;
-    if (level == "DEBUG" || level == "debug") return 0;
-    if (level == "INFO"  || level == "info")  return 1;
-    if (level == "WARN"  || level == "warn")  return 2;
-    if (level == "ERROR" || level == "error") return 3;
-    if (level == "FATAL" || level == "fatal") return 4;
-    return 1; // default INFO
-}
-
 int main(int argc, char* argv[]) {
     ServerConfig cfg;
     ConfigParser parser;
@@ -35,7 +23,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    Logger::setLevel(LogLevel(parseLogLevel(cfg.logLevel)));
+    Logger::setLevel(LogLevel(Logger::parseLogLevel(cfg.logLevel)));
     EventLoop loop;
     TcpServer server(&loop, cfg.port, cfg.ioThreads); // 创建TcpServer对象，监听8080端口，使用4个子线程处理连接
     ThreadPool threadPool(cfg.workerThreads); // 创建线程池，4个工作线程
@@ -138,7 +126,8 @@ int main(int argc, char* argv[]) {
         });
     });
     
-    server.start();
+    server.setMaxConnections(cfg.maxConnections);
+    server.start(cfg.listenBacklog);
     LOG_INFO << "Reactor HTTP server listening on port:" << cfg.port
              << ", IO threads:" << cfg.ioThreads
              << ", worker threads:" << cfg.workerThreads;

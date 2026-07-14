@@ -22,6 +22,7 @@ public:
     void setMessageCallback(const MessageCallback& cb);//连接状态回调
     void setConnectionCallback(const ConnectionCallback& cb);//设置消息回调
     void setCloseCallback(const CloseCallback& cb);//设置关闭消息回调
+    void setOnDestroy(std::function<void()> cb) { onDestroy_ = std::move(cb); }
     HttpContext& context() { return context_; }
     int64_t timerId() const { return timerId_; }
     void setTimerId(int64_t id) { timerId_ = id; }
@@ -45,4 +46,5 @@ private:
     ConnectionCallback connectionCallback_;
     MessageCallback messageCallback_;
     CloseCallback closeCallback_;
+    std::function<void()> onDestroy_; // server/资源管理回调，在 handleClose 时调用
 };

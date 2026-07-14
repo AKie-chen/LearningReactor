@@ -1,10 +1,16 @@
 #pragma once
 #include <string>
+#include <sys/socket.h>
 
 struct ServerConfig{
     // 网络
     uint16_t port = 8080;
     std::string bindAddr = "0.0.0.0";
+    int listenBacklog = SOMAXCONN; //listen积压队列大小
+    bool tcpNoDelay = true;   // 是否关闭Nagle算法
+    bool keepAlive = true; // 是否开启长连接
+    size_t maxConnections = 10000; // 最大连接数
+    int keepAliveIdleSec = 7200; // 长连接空闲时间(两小时)
 
     // 线程
     size_t ioThreads = 4;

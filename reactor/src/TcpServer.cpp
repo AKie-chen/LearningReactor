@@ -1,6 +1,7 @@
 #include "TcpServer.h"
 #include "Log.h"
 #include <fcntl.h>
+#include <unistd.h>
 
 TcpServer::TcpServer(EventLoop* loop,uint16_t port,size_t numSubThreads)
     :loop_(loop),
@@ -24,12 +25,20 @@ void TcpServer::setConnectionCallback(const ConnectionCallback cb)//连接建立
     connectionCallback_ = cb;
 }
 
-void TcpServer::start()
+void TcpServer::start(int listenNum)
 {
     acceptor_.setNewConnectionCallback([this](int client_fd,const sockaddr_in& client_addr){
 
+        if(connectionCount_ >= maxConnections_) { //超过最大连接数，关闭连接
+            ::close(client_fd);
+            return;
+        }
+
+        connectionCount_++; //连接数加一
         EventLoop* ioLoop = subLoops_.empty() ? loop_ : subLoops_[next_++ % subLoops_.size()]->getLoop();
         TcpConnection* conn = new TcpConnection(client_fd, ioLoop);
+
+        conn->setOnDestroy([this]() { connectionCount_--; });
 
         conn->setMessageCallback(messageCallback_);
         conn->setConnectionCallback([this](TcpConnection* conn){
@@ -43,7 +52,7 @@ void TcpServer::start()
         });
         LOG_DEBUG << "Accepted new connection, fd=" << client_fd;
     });
-    acceptor_.listen();
+    acceptor_.listen(listenNum);
 }
 
 void TcpServer::shutdown() // 关闭服务器，释放资源

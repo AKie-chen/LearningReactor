@@ -43,6 +43,7 @@ public:
     // 设置全局最低日志级别（低于此级别的日志不会输出）
     static void setLevel(LogLevel level);
     static LogLevel level();
+    static int parseLogLevel(const std::string& level); // 解析字符串为日志级别
 
     // 替换输出目标（默认 = 写 stderr）
     static void setOutput(OutputCallback cb);
