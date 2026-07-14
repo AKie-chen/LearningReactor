@@ -13,11 +13,32 @@
 #include "SignalHandler.h"
 #include "Router.h"
 #include "StaticFileHandler.h"
+#include "Config.h"
+#include <string>
 
-int main() {
+// Simple parser for log level strings used by ServerConfig::logLevel.
+static int parseLogLevel(const std::string& level)
+{
+    if (level == "TRACE" || level == "trace") return 0;
+    if (level == "DEBUG" || level == "debug") return 0;
+    if (level == "INFO"  || level == "info")  return 1;
+    if (level == "WARN"  || level == "warn")  return 2;
+    if (level == "ERROR" || level == "error") return 3;
+    if (level == "FATAL" || level == "fatal") return 4;
+    return 1; // default INFO
+}
+
+int main(int argc, char* argv[]) {
+    ServerConfig cfg;
+    ConfigParser parser;
+    if (!parser.parse(argc, argv, cfg)) {
+        return 0;
+    }
+
+    Logger::setLevel(LogLevel(parseLogLevel(cfg.logLevel)));
     EventLoop loop;
-    TcpServer server(&loop, 8080, 4); // 创建TcpServer对象，监听8080端口，使用4个子线程处理连接
-    ThreadPool threadPool(4); // 创建线程池，4个工作线程
+    TcpServer server(&loop, cfg.port, cfg.ioThreads); // 创建TcpServer对象，监听8080端口，使用4个子线程处理连接
+    ThreadPool threadPool(cfg.workerThreads); // 创建线程池，4个工作线程
 
     SignalHandler signalHandler(&loop);
     signalHandler.addSignal(SIGINT); // 注册 SIGINT 和 SIGTERM 信号处理
@@ -29,7 +50,7 @@ int main() {
     });
 
     Router router; // 创建路由器对象
-    StaticFileHandler staticHandler("./static"); // 创建静态文件处理器对象，指定静态文件目录
+    StaticFileHandler staticHandler(cfg.staticDir); // 创建静态文件处理器对象，指定静态文件目录
 
     router.addRoute(HttpRequest::kGet, "/", [](const HttpRequest& req, HttpResponse* resp) { // 注册路由
         resp->setStatusCode(HttpResponse::k200Ok);
@@ -40,25 +61,25 @@ int main() {
     });
 
     auto resetTimer = [&](TcpConnection* conn){
-            if(conn->timerId() != 0){
-                conn->getLoop()->timerQueue().cancel(conn->timerId());
-                conn->setTimerId(0);
-            }
+        if(conn->timerId() != 0){
+            conn->getLoop()->timerQueue().cancel(conn->timerId());
+            conn->setTimerId(0);
+        }
 
-            //设置新定时器：10秒后forceclose
-            timespec ts;
-            clock_gettime(CLOCK_MONOTONIC, &ts);
-            int64_t now = ts.tv_sec * 1'000'000 + ts.tv_nsec / 1'000;
-            int64_t expiration = now + 10 * 1'000'000;  // 10 秒后
+        //设置新定时器：10秒后forceclose
+        timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        int64_t now = ts.tv_sec * 1'000'000 + ts.tv_nsec / 1'000;
+        int64_t expiration = cfg.connectionTimeoutSec * 1'000'000;  // 10 秒后
+
+        int64_t timerId = conn->getLoop()->timerQueue().addTimer([conn]() {
+            conn->forceClose();
+        }, expiration);
     
-            int64_t timerId = conn->getLoop()->timerQueue().addTimer([conn]() {
-                conn->forceClose();
-            }, expiration);
-    
-            conn->setTimerId(timerId);
-        };
-    
-        server.setConnectionCallback([&resetTimer](TcpConnection* conn){
+        conn->setTimerId(timerId);
+    };
+
+    server.setConnectionCallback([&resetTimer](TcpConnection* conn){
         resetTimer(conn);
         conn->setCloseCallback([](TcpConnection* conn){
             if (conn->timerId() != 0) {// 取消定时器
@@ -118,7 +139,9 @@ int main() {
     });
     
     server.start();
-    LOG_INFO << "Reactor HTTP server listening on port 8080, 4 IO threads, 4 worker threads";
+    LOG_INFO << "Reactor HTTP server listening on port:" << cfg.port
+             << ", IO threads:" << cfg.ioThreads
+             << ", worker threads:" << cfg.workerThreads;
     loop.loop(); // 启动事件循环，等待和处理事件
     return 0;
 }

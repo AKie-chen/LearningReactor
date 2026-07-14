@@ -47,7 +47,7 @@ bool StaticFileHandler::handle(const HttpRequest& req, HttpResponse* resp)
     if (stat(resolved, &st) != 0) return false;
 
     // 3. 目录 → 尝试 index.html
-    if (S_ISDIR(st.st_mode)) {
+    if (S_ISDIR(st.st_mode)) { // 判断是否是目录
         std::string indexPath = filepath + "index.html";
         char indexResolved[PATH_MAX];
         if (realpath(indexPath.c_str(), indexResolved) == nullptr) return false;
@@ -56,7 +56,7 @@ bool StaticFileHandler::handle(const HttpRequest& req, HttpResponse* resp)
             return true;
         }
 
-        if (stat(indexResolved, &st) != 0) return false;
+        if (stat(indexResolved, &st) != 0) return false; // 判断 index.html 是否存在
         if (st.st_size > 10 * 1024 * 1024) {
             *resp = HttpResponse::makeError(HttpResponse::k413PayloadTooLarge, "Payload Too Large");
             return true;
