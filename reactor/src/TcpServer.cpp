@@ -1,5 +1,6 @@
 #include "TcpServer.h"
 #include "Log.h"
+#include "Metrics.h"
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -35,10 +36,14 @@ void TcpServer::start(int listenNum)
         }
 
         connectionCount_++; //连接数加一
+        Metrics::instance().activeConnections++; //活跃连接数加一
         EventLoop* ioLoop = subLoops_.empty() ? loop_ : subLoops_[next_++ % subLoops_.size()]->getLoop();
         TcpConnection* conn = new TcpConnection(client_fd, ioLoop);
 
-        conn->setOnDestroy([this]() { connectionCount_--; });
+        conn->setOnDestroy([this]() { 
+            connectionCount_--; // 连接数减一
+            Metrics::instance().activeConnections--; // 活跃连接数减一
+        });
 
         conn->setMessageCallback(messageCallback_);
         conn->setConnectionCallback([this](TcpConnection* conn){

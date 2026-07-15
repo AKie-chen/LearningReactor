@@ -14,6 +14,7 @@
 #include "Router.h"
 #include "StaticFileHandler.h"
 #include "Config.h"
+#include "Metrics.h"
 #include <string>
 
 int main(int argc, char* argv[]) {
@@ -46,6 +47,15 @@ int main(int argc, char* argv[]) {
         resp->setBody("Hello, World!");
         resp->addHeader("Content-Length", std::to_string(resp->body().size()));
         resp->addHeader("Content-Type", "text/plain");
+    });
+
+    router.addRoute(HttpRequest::kGet, "/stats", [](const HttpRequest&, HttpResponse* resp) {
+        std::string json = Metrics::instance().toJson();
+        resp->setStatusCode(HttpResponse::k200Ok);
+        resp->setStatusMessage("OK");
+        resp->setBody(json);
+        resp->addHeader("Content-Type", "application/json");
+        resp->addHeader("Content-Length", std::to_string(json.size()));
     });
 
     auto resetTimer = [&](TcpConnection* conn){
@@ -83,34 +93,38 @@ int main(int argc, char* argv[]) {
         if(!ctx.parseRequest(buf, &req)) {
             if(ctx.error() == HttpContext::kNoError) return; // 数据不够，继续等待
             else if(ctx.error() == HttpContext::kBadRequest) { // 请求格式错误，直接返回400错误
-                conn->getLoop()->queueInLoop([conn]() { 
+                Metrics::instance().errors4xx++;
+                conn->getLoop()->queueInLoop([conn]() {
                     conn->send(HttpResponse::makeError(HttpResponse::k400BadRequest, "Bad Request").toString());
                 });
                 conn->forceClose(); // 关闭连接
                 return;
             }else if(ctx.error() == HttpContext::kMethodNotSupported) { // 方法不支持，返回405错误
+                Metrics::instance().errors4xx++;
                 conn->getLoop()->queueInLoop([conn]() {
                     conn->send(HttpResponse::makeError(HttpResponse::k405MethodNotAllowed, "Method Not Supported").toString());
                 });
                 ctx.reset();
-                return; 
+                return;
             }else if(ctx.error() == HttpContext::kVersionNotSupported) { // HTTP版本不支持，返回505错误
+                Metrics::instance().errors5xx++;
                 conn->getLoop()->queueInLoop([conn]() {
                     conn->send(HttpResponse::makeError(HttpResponse::k505HttpVersionNotSupported, "Http Version Not Supported").toString());
                 });
                 ctx.reset();
-                return; 
+                return;
             }
         }
 
         // 处理完复位，等待下一个请求
         ctx.reset();
+        Metrics::instance().totalRequests++;
         //重置定时器
         resetTimer(conn);
 
         threadPool.run([conn,req, &router, &staticHandler]() { // 在工作线程中处理请求
             HttpResponse resp;
-            
+
             if (!router.route(req, &resp)) {
                 // 没有精确匹配，尝试静态文件
                 if (!staticHandler.handle(req, &resp)) {
@@ -118,6 +132,11 @@ int main(int argc, char* argv[]) {
                     resp = HttpResponse::makeError(HttpResponse::k404NotFound, "Not Found");
                 }
             }
+
+            // 统计错误：4xx / 5xx
+            int code = static_cast<int>(resp.code());
+            if (code >= 400 && code < 500) Metrics::instance().errors4xx++;
+            else if (code >= 500) Metrics::instance().errors5xx++;
 
             std::string data = resp.toString();
             conn->getLoop()->queueInLoop([conn, data = std::move(data)]() {

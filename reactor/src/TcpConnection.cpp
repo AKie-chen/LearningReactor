@@ -1,6 +1,7 @@
 #include "TcpConnection.h"
 #include "EventLoop.h"
 #include "Log.h"
+#include "Metrics.h"
 #include <sys/socket.h>
 #include <unistd.h>
 #include <netinet/in.h>
@@ -17,6 +18,7 @@ TcpConnection::~TcpConnection(){
 
 void TcpConnection::send(const std::string& data)//发送数据（先缓冲，再写）
 {
+    Metrics::instance().bytesSent += data.size();
     if(outputBuffer_.readableBytes() == 0){//写入缓冲区为空，尝试直接发送
         ssize_t n = ::send(fd_, data.data(), data.size(), MSG_NOSIGNAL);
         if(n > 0){
@@ -79,7 +81,10 @@ EventLoop* TcpConnection::getLoop() const //返回事件循环的指针
 
 void TcpConnection::handleRead()      //EPOLLIN回调
 {
+    size_t before = inputBuffer_.readableBytes();
     Buffer::ReadResult result = inputBuffer_.readFd(fd_);//将数据读到缓冲区
+    size_t received = inputBuffer_.readableBytes() - before;
+    if (received > 0) Metrics::instance().bytesReceived += received;
 
     if(inputBuffer_.readableBytes() > 0){//处理数据
         messageCallback_(this, &inputBuffer_);
