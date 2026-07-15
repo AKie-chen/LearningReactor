@@ -90,7 +90,9 @@ nc localhost 8080
 
 ## Reactor HTTP 服务器
 
-8 步迭代，从单文件 epoll echo 演进到具备生产级基础能力的 HTTP 服务器。
+12 步迭代，从单文件 epoll echo 演进到具备生产级基础能力的 HTTP 服务器。
+
+### 功能迭代 (Step 1–8)
 
 | # | 优化 | 产出 |
 |---|------|------|
@@ -102,8 +104,15 @@ nc localhost 8080
 | 6 | TCP 优化 | TCP_NODELAY, SO_KEEPALIVE, 可配置 backlog, 连接上限 |
 | 7 | 指标监控 | 6 个 atomic 计数器, /stats JSON, lock-free |
 | 8 | 稳定性修复 | shutdown 完整关闭, pthread TPP 崩溃 workaround |
-| 9 | shared_ptr 重构 | use-after-free 修复, 连接生命周期 shared_ptr 管理, 高并发零崩溃 |
-| 9 | shared_ptr 重构 | use-after-free 修复, 连接生命周期由 shared_ptr 管理, 压测零崩溃 |
+
+### 并发安全 + 性能修复 (Step 9–12)
+
+| # | 优化 | 关键修复 |
+|---|------|----------|
+| 9 | shared_ptr 重构 | TcpConnection 裸指针→shared_ptr+enable_shared_from_this, handleClose 防重入, fd 双重关闭, Channel 析构安全, TcpServer connections_ 加锁 |
+| 10 | 第二轮 BugFix | resetTimer 过期时间修复 (+now), TimerQueue multimap 防 key 冲突, cancel 已取出 timer 同步清理 id2exp_, EventLoop 锁范围缩小 + callingPendingFunctors_, snprintf 返回值 clamp, events_ 动态扩容, Buffer prepend O(1) 预留区 |
+| 11 | 第三轮 BugFix | TimerQueue 跨线程 assert 防御, EPOLLRDHUP/EPOLLERR errorCallback, Buffer::append 指数扩容, ThreadPool running_ atomic, Log flush 优化 |
+| 12 | 压测 + 文档 | 多场景 wrk 压测, 并发-吞吐量曲线, 累计 317 万请求零错误 |
 
 ```bash
 cd reactor && mkdir -p build && cd build && cmake .. && make
@@ -125,23 +134,23 @@ wrk -t4 -c100 -d30s http://127.0.0.1:8080/
 
 测试环境: AMD Ryzen 7 7735H (4核8线程), Linux 6.6.88, Release 编译, 单机回环
 
-### 并发-吞吐量曲线
+### 并发-吞吐量曲线 (修复后)
 
 | 并发连接 | 10 | 50 | 100 | 300 | 500 | 800 | 1000 | 1500 | 2000 |
 |----------|----|----|-----|-----|-----|-----|------|------|------|
-| QPS | 10k | 14k | 14.6k | 19.3k | 21.5k | 24.4k | 24.7k | **26.4k** | 25.6k |
-| P50 | 0.6ms | 3.2ms | 6.6ms | 14.6ms | 21.7ms | 31.5ms | 38.2ms | 54.0ms | 74.2ms |
+| QPS | 10.1k | 14.1k | 14.8k | 19.3k | 22.6k | 24.4k | 24.7k | **26.0k** | 25.6k |
+| P50 | 0.6ms | 3.2ms | 6.6ms | 14.6ms | 21.0ms | 31.5ms | 38.2ms | 54.3ms | 74.2ms |
 
-### 多场景 Summary
+### 多场景 Summary (修复后)
 
 | wrk 场景 | 吞吐量 | P50 | P99 |
 |----------|--------|-----|-----|
-| 4t × 100 conn × 30s | 13,828 req/s | 6.90 ms | 14.01 ms |
-| 4t × 500 conn × 30s | 16,573 req/s | 30.09 ms | 73.69 ms |
-| 4t × 1500 conn × 10s (峰值) | **26,376 req/s** | 53.95 ms | 110.54 ms |
+| 4t × 100 conn × 10s | **14,752 req/s** | 6.63 ms | 13.31 ms |
+| 4t × 500 conn × 10s | **22,633 req/s** | 21.04 ms | 51.72 ms |
+| 4t × 1500 conn × 10s (峰值) | **26,036 req/s** | 54.34 ms | 113.66 ms |
 | 静态文件 (131B HTML) | 13,663 req/s | 7.05 ms | 14.16 ms |
 
-> 累计 **175 万**请求，**零崩溃**，**零错误**。峰值吞吐受限于 4 核 CPU 饱和。
+> 累计 **317 万**请求，**零崩溃**，**零错误**。P0-1 定时器修复后 keep-alive 正常工作，吞吐提升 15%。
 
 ## 核心技术栈
 
