@@ -20,4 +20,5 @@ private:
 
     std::string rootDir_;        // 如 "./static"
     char rootDirAbs_[PATH_MAX];  // 如 "/home/user/project/static"
+    bool enabled_;               // 目录存在且可用时为 true
 };

@@ -6,14 +6,17 @@
 #include <sys/stat.h>
 
 
-StaticFileHandler::StaticFileHandler(const std::string& rootDir) : rootDir_(rootDir) {
+StaticFileHandler::StaticFileHandler(const std::string& rootDir) : rootDir_(rootDir), enabled_(false) {
     if (rootDir_[rootDir_.length() - 1] != '/') {
         rootDir_ += '/';
     }
     if (realpath(rootDir_.c_str(), rootDirAbs_) == nullptr) {
-        LOG_ERROR << "realpath(" << rootDir_ << ") failed";
-        exit(1);
+        LOG_WARN << "StaticFileHandler: directory does not exist — " << rootDir_
+                 << " (static file serving disabled)";
+        rootDirAbs_[0] = '\0';
+        return;
     }
+    enabled_ = true;
     LOG_INFO << "StaticFileHandler rootDir: " << rootDirAbs_;
 }
 
@@ -25,6 +28,8 @@ bool StaticFileHandler::isWithinRoot(const char* resolved) const {
 // 返回 true 表示成功处理（文件不存在时返回 false，由调用方给 404）
 bool StaticFileHandler::handle(const HttpRequest& req, HttpResponse* resp)
 {
+    if (!enabled_) return false;
+
     // 静态文件只允许 GET / HEAD
     if (req.method() != HttpRequest::kGet && req.method() != HttpRequest::kHead) {
         return false;

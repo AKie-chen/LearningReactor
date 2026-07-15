@@ -35,6 +35,7 @@ public:
     void enableReading(); // 使能可读事件
     void enableWriting(); // 使能可写事件
     void disableWriting(); // 禁止可写事件
+    void disableAll();    // 移除所有事件监听，从 epoll 中删除
 };
 
 #endif

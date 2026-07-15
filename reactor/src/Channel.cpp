@@ -6,7 +6,10 @@
 Channel::Channel(int fd, EventLoop* loop) : fd_(fd), loop_(loop), events_(0), revents_(0) {}
 
 Channel::~Channel() {
-    loop_->removeChannel(this); // 从事件循环中移除当前Channel对象
+    if (added_) {
+        loop_->removeChannel(this); // 从事件循环中移除当前Channel对象
+        added_ = false;
+    }
     close(fd_); // 关闭文件描述符，释放资源
 }
 
@@ -47,5 +50,14 @@ void Channel::disableWriting() // 禁止可写事件
         events_ &= ~EPOLLOUT; // 从关注的事件类型中移除EPOLLOUT事件
         data_.ptr = this; // 将Channel对象的指针存储在事件数据中，以便在事件发生时能够获取到对应的Channel对象
         loop_->updateChannel(this,EPOLL_CTL_MOD); // 更新Channel对象在epoll中的事件
+    }
+}
+
+void Channel::disableAll() // 移除所有事件监听
+{
+    if (added_) {
+        loop_->removeChannel(this);
+        added_ = false;
+        events_ = 0;
     }
 }

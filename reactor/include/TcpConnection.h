@@ -5,23 +5,26 @@
 #include "HttpContext.h"
 #include <string>
 #include <functional>
+#include <memory>
+#include <atomic>
 
-class TcpConnection{
+class TcpConnection : public std::enable_shared_from_this<TcpConnection> {
 public:
-    //回调类型
-    using ConnectionCallback = std::function<void(TcpConnection*)>;//连接状态变化
-    using MessageCallback = std::function<void(TcpConnection*,Buffer*)>;//消息变化
-    using CloseCallback = std::function<void(TcpConnection*)>;//关闭消息回调
+    // 回调类型 — 全部使用 shared_ptr 防止 use-after-free
+    using ptr = std::shared_ptr<TcpConnection>;
+    using ConnectionCallback = std::function<void(ptr)>;
+    using MessageCallback = std::function<void(ptr, Buffer*)>;
+    using CloseCallback = std::function<void(ptr)>;
 
-    TcpConnection(int fd,EventLoop* loop);
+    TcpConnection(int fd, EventLoop* loop);
     ~TcpConnection();
 
-    void send(const std::string& data);//发送数据（先缓冲，再写）
-    void forceClose();//主动关闭
-    void connectEstablished();//启动连接
-    void setMessageCallback(const MessageCallback& cb);//连接状态回调
-    void setConnectionCallback(const ConnectionCallback& cb);//设置消息回调
-    void setCloseCallback(const CloseCallback& cb);//设置关闭消息回调
+    void send(const std::string& data);
+    void forceClose();
+    void connectEstablished();
+    void setMessageCallback(const MessageCallback& cb);
+    void setConnectionCallback(const ConnectionCallback& cb);
+    void setCloseCallback(const CloseCallback& cb);
     void setOnDestroy(std::function<void()> cb) { onDestroy_ = std::move(cb); }
     HttpContext& context() { return context_; }
     int64_t timerId() const { return timerId_; }
@@ -30,21 +33,22 @@ public:
     int fd() const;
     EventLoop* getLoop() const;
 private:
-    int fd_;                //管理的fd
-    EventLoop* loop_;       //所属的loop
-    Channel channel_;       //非指针，生命周期跟随示例对象
-    Buffer inputBuffer_;    //读缓冲
-    Buffer outputBuffer_;   //写缓冲
-    HttpContext context_;   //HTTP上下文对象，用于处理HTTP请求和响应
-    int64_t timerId_ = 0;   //定时器ID，用于管理连接的超时处理
+    int fd_;
+    EventLoop* loop_;
+    Channel channel_;
+    Buffer inputBuffer_;
+    Buffer outputBuffer_;
+    HttpContext context_;
+    int64_t timerId_ = 0;
+    std::atomic<bool> closed_{false};   // 防止 handleClose() 重入
 
-    void handleRead();      //EPOLLIN回调
-    void handleWrite();     //EPOLLOUT回调
-    void handleClose();     //关闭/出错时调用
-    void destroy();         //销毁对象--queueInLoop
+    void handleRead();
+    void handleWrite();
+    void handleClose();
+    void destroy();  // 仅移除 epoll 监听，不 delete this
 
     ConnectionCallback connectionCallback_;
     MessageCallback messageCallback_;
     CloseCallback closeCallback_;
-    std::function<void()> onDestroy_; // server/资源管理回调，在 handleClose 时调用
+    std::function<void()> onDestroy_;
 };

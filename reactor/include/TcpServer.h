@@ -4,27 +4,31 @@
 #include "EventLoopThread.h"
 #include <functional>
 #include <atomic>
+#include <set>
+#include <mutex>
 
 class TcpServer{
 public:
-    using MessageCallback = std::function<void(TcpConnection*,Buffer*)>;
-    using ConnectionCallback = std::function<void(TcpConnection*)>;
+    using MessageCallback = std::function<void(TcpConnection::ptr, Buffer*)>;
+    using ConnectionCallback = std::function<void(TcpConnection::ptr)>;
 
-    TcpServer(EventLoop* loop,uint16_t port,size_t numSubThreads = 0);
+    TcpServer(EventLoop* loop, uint16_t port, size_t numSubThreads = 0);
     ~TcpServer();
 
-    void setMessageCallback(const MessageCallback cb);//处理连接的回调函数
-    void setConnectionCallback(const ConnectionCallback cb);//连接建立创建定时器的回调函数
-    void start(int listenNum);//启动acceptor
-    void shutdown(); // 关闭服务器，释放资源
+    void setMessageCallback(const MessageCallback cb);
+    void setConnectionCallback(const ConnectionCallback cb);
+    void start(int listenNum);
+    void shutdown();
     void setMaxConnections(size_t max) { maxConnections_ = max; }
 private:
-    EventLoop* loop_;//事件循环
-    Acceptor acceptor_;//服务端类
-    MessageCallback messageCallback_;//消息回调函数
+    EventLoop* loop_;
+    Acceptor acceptor_;
+    MessageCallback messageCallback_;
     ConnectionCallback connectionCallback_;
-    std::vector<std::unique_ptr<EventLoopThread>> subLoops_;//线程池
-    std::atomic<size_t> connectionCount_{0};//连接计数器
-    size_t maxConnections_ = 10000;//最大连接数
-    int next_ = 0;//轮询计数器
+    std::vector<std::unique_ptr<EventLoopThread>> subLoops_;
+    std::set<TcpConnection::ptr> connections_;    // 持有所有活跃连接
+    std::mutex connMutex_;                        // 保护 connections_ 的并发访问
+    std::atomic<size_t> connectionCount_{0};
+    size_t maxConnections_ = 10000;
+    int next_ = 0;
 };

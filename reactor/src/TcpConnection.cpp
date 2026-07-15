@@ -7,120 +7,138 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
-TcpConnection::TcpConnection(int fd,EventLoop* loop) : fd_(fd),loop_(loop),channel_(fd,loop){
+TcpConnection::TcpConnection(int fd, EventLoop* loop)
+    : fd_(fd), loop_(loop), channel_(fd, loop)
+{
     LOG_DEBUG << "TcpConnection created, fd=" << fd_;
 }
 
-TcpConnection::~TcpConnection(){
+TcpConnection::~TcpConnection()
+{
+    // fd 由 Channel 析构负责关闭，这里不重复 close
     LOG_DEBUG << "TcpConnection destroyed, fd=" << fd_;
-    ::close(fd_);
 }
 
-void TcpConnection::send(const std::string& data)//发送数据（先缓冲，再写）
+void TcpConnection::send(const std::string& data)
 {
     Metrics::instance().bytesSent += data.size();
-    if(outputBuffer_.readableBytes() == 0){//写入缓冲区为空，尝试直接发送
+    if (outputBuffer_.readableBytes() == 0) {
         ssize_t n = ::send(fd_, data.data(), data.size(), MSG_NOSIGNAL);
-        if(n > 0){
-            if(static_cast<size_t>(n) == data.size()) return;//发完了
-            outputBuffer_.append(data.data() + n, data.size() - n);//短写，剩余部分写进buffer
-        }else if(errno == EAGAIN || errno == EWOULDBLOCK){ //内核缓冲区满了，先放进outputBuffer_
+        if (n > 0) {
+            if (static_cast<size_t>(n) == data.size()) return;
+            outputBuffer_.append(data.data() + n, data.size() - n);
+        } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
             outputBuffer_.append(data.data(), data.size());
-        }else{//发生错误
-            handleClose(); 
+        } else {
+            handleClose();
             return;
         }
-    }else{//outputBuffer_里还有数据，先将data数据追加进outputBuffer_
-        outputBuffer_.append(data.data(),data.size());
-        return;//等EPOLLOUT触发handleWrite
+    } else {
+        outputBuffer_.append(data.data(), data.size());
+        return;
     }
-
-channel_.enableWriting();//有数据要发，开启监听
+    channel_.enableWriting();
 }
 
-void TcpConnection::forceClose()//主动关闭
+void TcpConnection::forceClose()
 {
     handleClose();
 }
 
-void TcpConnection::connectEstablished()//启动连接
-{   
+void TcpConnection::connectEstablished()
+{
     int optval = 1;
-    setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval)); // 关闭Nagle算法
-    setsockopt(fd_, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)); // 心跳机制
-    channel_.setReadCallback([this](){handleRead();});
-    channel_.setWriteCallback([this](){handleWrite();});
+    setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof(optval));
+    setsockopt(fd_, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
+
+    // Channel 回调使用 raw this — 安全，因为 Channel 是 TcpConnection 的成员，
+    // disableAll() 后不会再触发回调，且 TcpConnection 由 shared_ptr 保证生命周期
+    channel_.setReadCallback([this]() { handleRead(); });
+    channel_.setWriteCallback([this]() { handleWrite(); });
     channel_.enableReading();
-    connectionCallback_(this);
+    connectionCallback_(shared_from_this());
 }
 
-void TcpConnection::setMessageCallback(const MessageCallback& cb)//设置连接状态回调
-{   
+void TcpConnection::setMessageCallback(const MessageCallback& cb)
+{
     messageCallback_ = cb;
 }
 
-void TcpConnection::setConnectionCallback(const ConnectionCallback& cb)//设置消息回调
+void TcpConnection::setConnectionCallback(const ConnectionCallback& cb)
 {
     connectionCallback_ = cb;
 }
 
-void TcpConnection::setCloseCallback(const CloseCallback& cb)//设置关闭消息回调
+void TcpConnection::setCloseCallback(const CloseCallback& cb)
 {
     closeCallback_ = cb;
 }
 
-int TcpConnection::fd() const //返回fd
+int TcpConnection::fd() const
 {
     return fd_;
 }
 
-EventLoop* TcpConnection::getLoop() const //返回事件循环的指针
+EventLoop* TcpConnection::getLoop() const
 {
     return loop_;
 }
 
-void TcpConnection::handleRead()      //EPOLLIN回调
+void TcpConnection::handleRead()
 {
     size_t before = inputBuffer_.readableBytes();
-    Buffer::ReadResult result = inputBuffer_.readFd(fd_);//将数据读到缓冲区
+    Buffer::ReadResult result = inputBuffer_.readFd(fd_);
     size_t received = inputBuffer_.readableBytes() - before;
     if (received > 0) Metrics::instance().bytesReceived += received;
 
-    if(inputBuffer_.readableBytes() > 0){//处理数据
-        messageCallback_(this, &inputBuffer_);
+    if (inputBuffer_.readableBytes() > 0) {
+        messageCallback_(shared_from_this(), &inputBuffer_);
     }
 
-    //判断是否关闭
-    if(result == Buffer::kClosed){
+    if (result == Buffer::kClosed) {
         handleClose();
-    }else if(result == Buffer::kError){
+    } else if (result == Buffer::kError) {
         handleClose();
     }
 }
 
-void TcpConnection::handleWrite()     //EPOLLOUT回调
+void TcpConnection::handleWrite()
 {
     Buffer::ReadResult result = outputBuffer_.writeFd(fd_);
-    if(outputBuffer_.readableBytes() == 0){
-        channel_.disableWriting();//发完了，关掉EPOLLOTUT
-        outputBuffer_.shrinkIfLarge();//缩小缓冲区
+    if (outputBuffer_.readableBytes() == 0) {
+        channel_.disableWriting();
+        outputBuffer_.shrinkIfLarge();
     }
-    if(result == Buffer::kError){
+    if (result == Buffer::kError) {
         handleClose();
     }
 }
 
-void TcpConnection::handleClose()     //关闭/出错时调用
+void TcpConnection::handleClose()
 {
+    // 防止重入：messageCallback_ 中调了 forceClose()，
+    // handleRead/handleWrite 后续又会再次调用 handleClose()
+    if (closed_.exchange(true)) return;
+
+    // 守卫：保持 shared_ptr 直到函数结束，防止 closeCallback_ 中释放
+    // 最后一个引用导致 this 被 delete，后续 destroy() 访问 UAF
+    ptr guard = shared_from_this();
+
     LOG_DEBUG << "Connection closing, fd=" << fd_;
     if (onDestroy_) onDestroy_();
-    if(closeCallback_) closeCallback_(this);
+    if (closeCallback_) closeCallback_(guard);
     destroy();
 }
 
-void TcpConnection::destroy()         //销毁对象--queueInLoop
+void TcpConnection::destroy()
 {
-    loop_->queueInLoop([this](){
-        delete this;
+    // 从 epoll 移除，不再监听任何事件
+    channel_.disableAll();
+
+    // 延迟释放守卫：epoll_wait 返回的 events 数组可能还持有本 Channel 的指针，
+    // 如果此时析构 TcpConnection，后续遍历 events 时 Channel 指针会悬空。
+    // 将 shared_ptr 放入 pending queue，确保析构发生在 epoll for 循环之后。
+    loop_->queueInLoop([guard = shared_from_this()]() {
+        // guard 在此销毁，TcpConnection 生命周期安全结束
     });
 }

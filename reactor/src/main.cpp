@@ -26,22 +26,22 @@ int main(int argc, char* argv[]) {
 
     Logger::setLevel(LogLevel(Logger::parseLogLevel(cfg.logLevel)));
     EventLoop loop;
-    TcpServer server(&loop, cfg.port, cfg.ioThreads); // 创建TcpServer对象，监听8080端口，使用4个子线程处理连接
-    ThreadPool threadPool(cfg.workerThreads); // 创建线程池，4个工作线程
+    TcpServer server(&loop, cfg.port, cfg.ioThreads);
+    ThreadPool threadPool(cfg.workerThreads);
 
     SignalHandler signalHandler(&loop);
-    signalHandler.addSignal(SIGINT); // 注册 SIGINT 和 SIGTERM 信号处理
+    signalHandler.addSignal(SIGINT);
     signalHandler.addSignal(SIGTERM);
     signalHandler.setShutdownCallback([&loop, &server]() {
         LOG_INFO << "Shutdown signal received, stopping server...";
-        server.shutdown(); // 关闭服务器，释放资源
-        loop.quit(); // 停止事件循环
+        server.shutdown();
+        loop.quit();
     });
 
-    Router router; // 创建路由器对象
-    StaticFileHandler staticHandler(cfg.staticDir); // 创建静态文件处理器对象，指定静态文件目录
+    Router router;
+    StaticFileHandler staticHandler(cfg.staticDir);
 
-    router.addRoute(HttpRequest::kGet, "/", [](const HttpRequest& req, HttpResponse* resp) { // 注册路由
+    router.addRoute(HttpRequest::kGet, "/", [](const HttpRequest& req, HttpResponse* resp) {
         resp->setStatusCode(HttpResponse::k200Ok);
         resp->setStatusMessage("OK");
         resp->setBody("Hello, World!");
@@ -58,58 +58,65 @@ int main(int argc, char* argv[]) {
         resp->addHeader("Content-Length", std::to_string(json.size()));
     });
 
-    auto resetTimer = [&](TcpConnection* conn){
-        if(conn->timerId() != 0){
+    auto resetTimer = [&cfg](TcpConnection::ptr conn) {
+        if (conn->timerId() != 0) {
             conn->getLoop()->timerQueue().cancel(conn->timerId());
             conn->setTimerId(0);
         }
 
-        //设置新定时器：10秒后forceclose
+        // 设置新定时器
         timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
         int64_t now = ts.tv_sec * 1'000'000 + ts.tv_nsec / 1'000;
-        int64_t expiration = cfg.connectionTimeoutSec * 1'000'000;  // 10 秒后
+        int64_t expiration = cfg.connectionTimeoutSec * 1'000'000;
 
         int64_t timerId = conn->getLoop()->timerQueue().addTimer([conn]() {
             conn->forceClose();
         }, expiration);
-    
+
         conn->setTimerId(timerId);
     };
 
-    server.setConnectionCallback([&resetTimer](TcpConnection* conn){
+    server.setConnectionCallback([&resetTimer](TcpConnection::ptr conn) {
         resetTimer(conn);
-        conn->setCloseCallback([](TcpConnection* conn){
-            if (conn->timerId() != 0) {// 取消定时器
-                conn->getLoop()->timerQueue().cancel(conn->timerId());
-                conn->setTimerId(0);
+        conn->setCloseCallback([](TcpConnection::ptr c) {
+            if (c->timerId() != 0) {
+                c->getLoop()->timerQueue().cancel(c->timerId());
+                c->setTimerId(0);
             }
         });
     });
-    server.setMessageCallback([&resetTimer,&threadPool,&router,&staticHandler](TcpConnection* conn,Buffer* buf){
+
+    server.setMessageCallback([&resetTimer, &threadPool, &router, &staticHandler]
+                              (TcpConnection::ptr conn, Buffer* buf) {
         HttpContext& ctx = conn->context();
         HttpRequest req;
 
-        if(!ctx.parseRequest(buf, &req)) {
-            if(ctx.error() == HttpContext::kNoError) return; // 数据不够，继续等待
-            else if(ctx.error() == HttpContext::kBadRequest) { // 请求格式错误，直接返回400错误
+        if (!ctx.parseRequest(buf, &req)) {
+            if (ctx.error() == HttpContext::kNoError) return;
+            else if (ctx.error() == HttpContext::kBadRequest) {
                 Metrics::instance().errors4xx++;
                 conn->getLoop()->queueInLoop([conn]() {
-                    conn->send(HttpResponse::makeError(HttpResponse::k400BadRequest, "Bad Request").toString());
+                    conn->send(HttpResponse::makeError(
+                        HttpResponse::k400BadRequest, "Bad Request").toString());
                 });
-                conn->forceClose(); // 关闭连接
+                conn->forceClose();
                 return;
-            }else if(ctx.error() == HttpContext::kMethodNotSupported) { // 方法不支持，返回405错误
+            } else if (ctx.error() == HttpContext::kMethodNotSupported) {
                 Metrics::instance().errors4xx++;
                 conn->getLoop()->queueInLoop([conn]() {
-                    conn->send(HttpResponse::makeError(HttpResponse::k405MethodNotAllowed, "Method Not Supported").toString());
+                    conn->send(HttpResponse::makeError(
+                        HttpResponse::k405MethodNotAllowed,
+                        "Method Not Supported").toString());
                 });
                 ctx.reset();
                 return;
-            }else if(ctx.error() == HttpContext::kVersionNotSupported) { // HTTP版本不支持，返回505错误
+            } else if (ctx.error() == HttpContext::kVersionNotSupported) {
                 Metrics::instance().errors5xx++;
                 conn->getLoop()->queueInLoop([conn]() {
-                    conn->send(HttpResponse::makeError(HttpResponse::k505HttpVersionNotSupported, "Http Version Not Supported").toString());
+                    conn->send(HttpResponse::makeError(
+                        HttpResponse::k505HttpVersionNotSupported,
+                        "Http Version Not Supported").toString());
                 });
                 ctx.reset();
                 return;
@@ -119,14 +126,14 @@ int main(int argc, char* argv[]) {
         // 处理完复位，等待下一个请求
         ctx.reset();
         Metrics::instance().totalRequests++;
-        //重置定时器
         resetTimer(conn);
 
         threadPool.run([conn, req, &router, &staticHandler]() {
             HttpResponse resp;
             if (!router.route(req, &resp)) {
                 if (!staticHandler.handle(req, &resp)) {
-                    resp = HttpResponse::makeError(HttpResponse::k404NotFound, "Not Found");
+                    resp = HttpResponse::makeError(
+                        HttpResponse::k404NotFound, "Not Found");
                 }
             }
             int code = static_cast<int>(resp.code());
@@ -139,12 +146,12 @@ int main(int argc, char* argv[]) {
             });
         });
     });
-    
+
     server.setMaxConnections(cfg.maxConnections);
     server.start(cfg.listenBacklog);
     LOG_INFO << "Reactor HTTP server listening on port:" << cfg.port
              << ", IO threads:" << cfg.ioThreads
              << ", worker threads:" << cfg.workerThreads;
-    loop.loop(); // 启动事件循环，等待和处理事件
+    loop.loop();
     return 0;
 }

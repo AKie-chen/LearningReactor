@@ -102,6 +102,8 @@ nc localhost 8080
 | 6 | TCP 优化 | TCP_NODELAY, SO_KEEPALIVE, 可配置 backlog, 连接上限 |
 | 7 | 指标监控 | 6 个 atomic 计数器, /stats JSON, lock-free |
 | 8 | 稳定性修复 | shutdown 完整关闭, pthread TPP 崩溃 workaround |
+| 9 | shared_ptr 重构 | use-after-free 修复, 连接生命周期 shared_ptr 管理, 高并发零崩溃 |
+| 9 | shared_ptr 重构 | use-after-free 修复, 连接生命周期由 shared_ptr 管理, 压测零崩溃 |
 
 ```bash
 cd reactor && mkdir -p build && cd build && cmake .. && make
@@ -118,6 +120,18 @@ wrk -t4 -c100 -d30s http://127.0.0.1:8080/
 ```
 
 详细架构、性能数据、设计决策见 [reactor/README.md](reactor/README.md)。
+
+## 压测概览
+
+测试环境: AMD Ryzen 7 7735H (4核), Linux 6.6.88, Release 编译
+
+| wrk 场景 | 吞吐量 | P50 延迟 | P99 延迟 |
+|----------|--------|----------|----------|
+| 4t × 100 conn × 30s | 13,828 req/s | 6.90 ms | 14.01 ms |
+| 4t × 500 conn × 30s | 16,573 req/s | 30.09 ms | 73.69 ms |
+| 静态文件 (131B) | 13,663 req/s | 7.05 ms | 14.16 ms |
+
+> 单次测试累计处理 **175 万请求**，4xx/5xx 错误数 = 0，服务器零崩溃。
 
 ## 核心技术栈
 
