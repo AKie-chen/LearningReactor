@@ -2,6 +2,7 @@
 #include "Log.h"
 #include <fcntl.h>
 #include <string.h>
+#include <unistd.h>
 
 Acceptor::Acceptor(EventLoop* loop, uint16_t port)
             :loop_(loop),
@@ -22,7 +23,14 @@ Acceptor::Acceptor(EventLoop* loop, uint16_t port)
     bind(listenfd_,(sockaddr*)&addr,sizeof(addr)); //将socket绑定到指定的地址和端口上
 }
 
-Acceptor::~Acceptor(){}
+Acceptor::~Acceptor(){ close(); }
+
+void Acceptor::close() {
+    if (listenfd_ >= 0) {
+        ::close(listenfd_);
+        listenfd_ = -1;
+    }
+}
 
 void Acceptor::setNewConnectionCallback(const NewConnectionCallback cb)//设置新连接回调函数
 {

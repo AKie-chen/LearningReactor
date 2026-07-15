@@ -62,5 +62,6 @@ void TcpServer::start(int listenNum)
 
 void TcpServer::shutdown() // 关闭服务器，释放资源
 {
-    subLoops_.clear(); // 清空子线程池，触发 EventLoopThread 的析构函数，停止子线程
+    acceptor_.close();   // 1. 停止接受新连接
+    subLoops_.clear();   // 2. 停止 IO 线程（EventLoop::quit + join），处理完队列中的连接销毁
 }

@@ -1,4 +1,5 @@
 #include "EventLoopThread.h"
+#include <pthread.h>
 
 EventLoopThread::EventLoopThread()
 {
@@ -7,7 +8,10 @@ EventLoopThread::EventLoopThread()
     cond_.wait(lock, [this] { return loop_ != nullptr; }); // 等待条件变量，直到loop_被初始化
 }
 
-EventLoopThread::~EventLoopThread(){ loop_->quit(); thread_.join(); } // 析构函数，释放loop_指针所指向的内存
+EventLoopThread::~EventLoopThread() {
+    if (loop_) loop_->quit();        // 通知 IO 线程退出
+    if (thread_.joinable()) thread_.join();
+}
 
 EventLoop* EventLoopThread::getLoop() const   // 返回 loop 指针
 {
@@ -16,6 +20,9 @@ EventLoop* EventLoopThread::getLoop() const   // 返回 loop 指针
 
 void EventLoopThread::threadFunc()            // 线程函数：创建 loop → loop.loop()
 {
+    // 显式设置调度策略，避免旧 glibc+内核的 TPP 断言崩溃
+    pthread_setschedparam(pthread_self(), SCHED_OTHER, nullptr);
+
     EventLoop loop; // 创建事件循环对象
     {
         std::lock_guard<std::mutex> lock(mutex_); // 加锁，保护共享数据loop_

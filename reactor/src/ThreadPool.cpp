@@ -1,9 +1,13 @@
 #include "ThreadPool.h"
+#include <pthread.h>
 
 ThreadPool::ThreadPool(size_t numThreads)
 {
     for(size_t i = 0; i < numThreads; i++){
-        threads_.emplace_back([this] { workerLoop(); });
+        threads_.emplace_back([this] {
+            pthread_setschedparam(pthread_self(), SCHED_OTHER, nullptr);
+            workerLoop();
+        });
     }
 }
 
