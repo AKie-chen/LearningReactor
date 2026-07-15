@@ -1,13 +1,9 @@
 #include "ThreadPool.h"
-#include <pthread.h>
 
 ThreadPool::ThreadPool(size_t numThreads)
 {
     for(size_t i = 0; i < numThreads; i++){
-        threads_.emplace_back([this] {
-            pthread_setschedparam(pthread_self(), SCHED_OTHER, nullptr);
-            workerLoop();
-        });
+        threads_.emplace_back([this] { workerLoop(); });
     }
 }
 
@@ -37,7 +33,7 @@ void ThreadPool::workerLoop() //每个工作的线程
         Task task;
         {
             std::unique_lock<std::mutex> lock(mutex_);
-            cond_.wait(lock, [this] { return !tasks_.empty() || !running_;});// 等待任务队列非空或线程池停止
+            cond_.wait(lock, [this] { return !tasks_.empty() || !running_;});
             if (!running_ && tasks_.empty()) return;
             task = std::move(tasks_.front());
             tasks_.pop();

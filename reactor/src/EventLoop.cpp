@@ -90,7 +90,7 @@ void EventLoop::handleWakeup() {
 
 void EventLoop::wakeup() // 唤醒事件循环
 {
-    uint64_t val;
+    uint64_t val = 1;
     write(wakeupFd_, &val, sizeof(val));
 }
 

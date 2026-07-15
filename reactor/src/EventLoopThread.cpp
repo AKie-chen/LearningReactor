@@ -20,9 +20,6 @@ EventLoop* EventLoopThread::getLoop() const   // 返回 loop 指针
 
 void EventLoopThread::threadFunc()            // 线程函数：创建 loop → loop.loop()
 {
-    // 显式设置调度策略，避免旧 glibc+内核的 TPP 断言崩溃
-    pthread_setschedparam(pthread_self(), SCHED_OTHER, nullptr);
-
     EventLoop loop; // 创建事件循环对象
     {
         std::lock_guard<std::mutex> lock(mutex_); // 加锁，保护共享数据loop_

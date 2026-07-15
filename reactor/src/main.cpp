@@ -122,18 +122,13 @@ int main(int argc, char* argv[]) {
         //重置定时器
         resetTimer(conn);
 
-        threadPool.run([conn,req, &router, &staticHandler]() { // 在工作线程中处理请求
+        threadPool.run([conn, req, &router, &staticHandler]() {
             HttpResponse resp;
-
             if (!router.route(req, &resp)) {
-                // 没有精确匹配，尝试静态文件
                 if (!staticHandler.handle(req, &resp)) {
-                    // 静态文件也处理不了 → 404
                     resp = HttpResponse::makeError(HttpResponse::k404NotFound, "Not Found");
                 }
             }
-
-            // 统计错误：4xx / 5xx
             int code = static_cast<int>(resp.code());
             if (code >= 400 && code < 500) Metrics::instance().errors4xx++;
             else if (code >= 500) Metrics::instance().errors5xx++;
