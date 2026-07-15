@@ -55,6 +55,7 @@ void TcpConnection::connectEstablished()
     // disableAll() 后不会再触发回调，且 TcpConnection 由 shared_ptr 保证生命周期
     channel_.setReadCallback([this]() { handleRead(); });
     channel_.setWriteCallback([this]() { handleWrite(); });
+    channel_.setErrorCallback([this]() { handleClose(); });
     channel_.enableReading();
     connectionCallback_(shared_from_this());
 }

@@ -37,4 +37,5 @@ public:
     void handleWakeup(); // 处理唤醒事件
     void wakeup(); // 唤醒事件循环
     TimerQueue& timerQueue(); //获取定时器队列对象
+    bool isInLoopThread() const { return std::this_thread::get_id() == threadId_; }
 };

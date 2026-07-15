@@ -31,6 +31,11 @@ void EventLoop::loop() {
         int react=epoll_wait(epfd_,events_.data(),events_.size(),5000);//等待事件发生，参数分别为epoll实例、就绪事件数组、最大事件数和超时时间（毫秒）
         
         if(react>0){//有fd可读
+            // 动态扩容：如果 events_ 被填满，说明一次 epoll_wait 没有返回所有就绪 fd，
+            // 下次可能还有更多，扩容以避免饥饿
+            if (static_cast<size_t>(react) == events_.size()) {
+                events_.resize(events_.size() * 2);
+            }
             for(int i=0;i<react;i++){
                 Channel* channel = static_cast<Channel*>(events_[i].data.ptr); // 获取就绪事件对应的Channel对象
                 channel->handleEvent(events_[i].events); // 处理事件，根据事件类型调用相应的回调函数
@@ -44,11 +49,15 @@ void EventLoop::loop() {
         }
         
         std::vector<std::function<void()>> temp; // 供销毁的vector
-        std::lock_guard<std::mutex> lock(mutex_); // 加锁，保护共享数据pendingFunctors_
-        temp.swap(pendingFunctors_);//交换任务，temp拿到需要销毁的任务，而pendingFunction_则清空等待新的销毁任务
+        {
+            std::lock_guard<std::mutex> lock(mutex_); // 加锁，保护共享数据pendingFunctors_
+            temp.swap(pendingFunctors_);//交换任务，temp拿到需要销毁的任务，而pendingFunction_则清空等待新的销毁任务
+        }
+        callingPendingFunctors_ = true;
         for (auto &func : temp) {
             func();
         }
+        callingPendingFunctors_ = false;
     }
 }
 

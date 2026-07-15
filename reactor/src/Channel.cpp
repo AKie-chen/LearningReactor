@@ -15,14 +15,15 @@ Channel::~Channel() {
 
 void Channel::handleEvent(uint32_t events)// 处理事件，根据事件类型调用相应的回调函数
 {
-    if((events & EPOLLIN) && readCallback_){ // 如果发生了可读事件，并且设置了可读事件的回调函数
-        readCallback_(); // 调用可读事件的回调函数
+    if((events & EPOLLIN) && readCallback_){
+        readCallback_();
     }
-    if((events & EPOLLOUT) && writeCallback_){ // 如果发生了可写事件，并且设置了可写事件的回调函数
-        writeCallback_(); // 调用可写事件的回调函数
+    if((events & EPOLLOUT) && writeCallback_){
+        writeCallback_();
     }
-    if((events & (EPOLLHUP | EPOLLERR)) && errorCallback_){ // 如果发生了错误事件，并且设置了错误事件的回调函数
-        errorCallback_(); // 调用错误事件的回调函数
+    // EPOLLRDHUP: 对端关闭连接 (read half) — 视为错误，触发清理
+    if((events & (EPOLLHUP | EPOLLERR | EPOLLRDHUP)) && errorCallback_){
+        errorCallback_();
     }
 }
 

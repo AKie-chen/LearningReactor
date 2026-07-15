@@ -39,9 +39,10 @@ private:
     int timerfd_;                  // timerfd 文件描述符（内核定时器）
     Channel timerChannel_;         // 用 Channel 包装 timerfd，交给 epoll 监听
 
+    // 使用 multimap：同一微秒可能有多个 timer 到期，map 会覆盖
     // key = 过期时间（微秒），value = Timer 对象
     // begin() 永远指向最早到期的 Timer
-    std::map<int64_t, Timer> timers_;
+    std::multimap<int64_t, Timer> timers_;
     std::map<int64_t, int64_t> id2exp_; // key = timerId，value = expiration
     int64_t nextTimerId_ = 1;     // 自增 ID 生成器
 };

@@ -101,6 +101,10 @@ void Logger::write(LogLevel level, const char* file, int line,
                      timeStr, static_cast<long long>(ms.count()),
                      levelName(level), filename, line, message.c_str());
 
+    // snprintf 返回实际需要的长度，可能超过 sizeof(lineBuf)；
+    // 必须 clamp 到 buffer 大小，否则 lineBuf[n] 越界读
+    if (n < 0) n = 0;
+    if (n > static_cast<int>(sizeof(lineBuf))) n = sizeof(lineBuf);
     std::string logLine(lineBuf, n);
 
     // 输出
@@ -112,9 +116,9 @@ void Logger::write(LogLevel level, const char* file, int line,
     } else {
         // 默认输出：INFO/DEBUG → stdout，WARN/ERROR/FATAL → stderr
         if (static_cast<int>(level) >= static_cast<int>(LogLevel::WARN)) {
-            std::cerr << logLine << std::flush;
+            std::cerr << logLine << std::flush;  // 错误日志必须立即落盘
         } else {
-            std::cout << logLine << std::flush;
+            std::cout << logLine;  // stdout 行缓冲，'\n' 自动 flush，无需显式
         }
     }
 }

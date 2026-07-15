@@ -64,11 +64,11 @@ int main(int argc, char* argv[]) {
             conn->setTimerId(0);
         }
 
-        // 设置新定时器
+        // 设置新定时器：expiration 是绝对时间 (CLOCK_MONOTONIC 微秒)
         timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
         int64_t now = ts.tv_sec * 1'000'000 + ts.tv_nsec / 1'000;
-        int64_t expiration = cfg.connectionTimeoutSec * 1'000'000;
+        int64_t expiration = now + cfg.connectionTimeoutSec * 1'000'000;
 
         int64_t timerId = conn->getLoop()->timerQueue().addTimer([conn]() {
             conn->forceClose();

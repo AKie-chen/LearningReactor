@@ -5,6 +5,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <atomic>
 
 class ThreadPool {
 public:
@@ -21,5 +22,5 @@ private:
     std::queue<Task> tasks_;    // 任务队列
     std::mutex mutex_;  // 互斥锁，用于保护任务队列
     std::condition_variable cond_; // 条件变量，用于线程间的通知
-    bool running_ = true;
+    std::atomic<bool> running_{true};
 };

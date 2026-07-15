@@ -29,9 +29,9 @@ public:
     int fd() const { return fd_; } // 获取文件描述符
     uint32_t events() const { return events_; } // 获取当前关注的事件类型
 
-    void setReadCallback(const std::function<void()>& cb) { readCallback_ = cb; } // 设置可读事件的回调函数,注册到EventLoop中
-    void setWriteCallback(const std::function<void()>& cb) { writeCallback_ = cb; } // 设置可写事件的回调函数
-    void setErrorCallback(const std::function<void()>& cb) { errorCallback_ = cb; } // 设置错误事件的回调
+    void setReadCallback(const std::function<void()>& cb) { readCallback_ = cb; }
+    void setWriteCallback(const std::function<void()>& cb) { writeCallback_ = cb; }
+    void setErrorCallback(const std::function<void()>& cb) { errorCallback_ = cb; }
     void enableReading(); // 使能可读事件
     void enableWriting(); // 使能可写事件
     void disableWriting(); // 禁止可写事件
