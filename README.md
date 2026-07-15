@@ -42,9 +42,9 @@ Reactor/
 │   ├── client.cpp
 │   └── CMakeLists.txt
 │
-└── reactor/                # 阶段 5: 多线程 Reactor HTTP 服务器
-    ├── include/            # 13 个头文件
-    ├── src/                # 15 个源文件
+└── reactor/                # 阶段 5: 多线程 Reactor HTTP 服务器 (8 步优化)
+    ├── include/            # 19 个头文件
+    ├── src/                # 17 个源文件
     ├── CMakeLists.txt
     └── README.md           # 详细架构文档
 ```
@@ -90,12 +90,30 @@ nc localhost 8080
 
 ## Reactor HTTP 服务器
 
+8 步迭代，从单文件 epoll echo 演进到具备生产级基础能力的 HTTP 服务器。
+
+| # | 优化 | 产出 |
+|---|------|------|
+| 1 | 结构化日志 | LogStream + Logger, 5 级过滤, 时间戳 + 文件行号 |
+| 2 | 优雅关闭 | SignalHandler, eventfd + epoll 集成 POSIX 信号 |
+| 3 | HTTP 错误处理 | 400/403/404/405/413/500/505, ParseError 分类 |
+| 4 | 路由 + 静态文件 | Router (method+path), StaticFileHandler (realpath 防穿越) |
+| 5 | 配置系统 | CLI + 配置文件, 两遍扫描 (CLI 优先) |
+| 6 | TCP 优化 | TCP_NODELAY, SO_KEEPALIVE, 可配置 backlog, 连接上限 |
+| 7 | 指标监控 | 6 个 atomic 计数器, /stats JSON, lock-free |
+| 8 | 稳定性修复 | shutdown 完整关闭, pthread TPP 崩溃 workaround |
+
 ```bash
 cd reactor && mkdir -p build && cd build && cmake .. && make
 ./main
 
+# 命令行参数
+./main -p 9090 -i 2 -w 8 -d ./public -t 30 --log-level DEBUG
+
 # 测试
-curl -v http://localhost:8080/
+curl http://localhost:8080/                  # 路由 → Hello, World!
+curl http://localhost:8080/index.html         # 静态文件
+curl http://localhost:8080/stats              # 指标 JSON
 wrk -t4 -c100 -d30s http://127.0.0.1:8080/
 ```
 
@@ -107,12 +125,17 @@ wrk -t4 -c100 -d30s http://127.0.0.1:8080/
 |------|------|
 | `epoll` ET | 事件驱动 I/O |
 | `timerfd_create` | 定时器 (CLOCK_MONOTONIC) |
-| `eventfd` | 跨线程唤醒 |
+| `eventfd` | 跨线程唤醒 + 信号通知 |
 | `readv` / `write` | 分散/聚集 I/O |
 | `fcntl(O_NONBLOCK)` | 非阻塞 fd |
-| `SO_REUSEPORT` | 多进程负载均衡 |
+| `SO_REUSEADDR` | 地址重用, 快速重启 |
+| `TCP_NODELAY` | 禁用 Nagle, 降低延迟 |
+| `SO_KEEPALIVE` | 死连接检测 |
+| `realpath(3)` | 路径穿越防护 |
+| `sigaction` | POSIX 信号处理 |
 | `CLOCK_MONOTONIC` | 不受系统时间跳变影响 |
 | `MSG_NOSIGNAL` | 避免 SIGPIPE |
+| `std::atomic` | 无锁计数器 (Metrics) |
 
 ## 环境要求
 
